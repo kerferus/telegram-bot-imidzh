@@ -6,11 +6,11 @@ load_dotenv()
 
 @dataclass
 class Config:
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN")
+    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
     RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL", "")
     
     # Google Sheets
-    GOOGLE_SHEETS_CREDENTIALS: str = "credentials.json"  # Файл с ключом
+    GOOGLE_SHEETS_CREDENTIALS: str = "credentials.json"
     SPREADSHEET_ID: str = os.getenv("SPREADSHEET_ID", "")
     
     # Контакты
@@ -22,6 +22,13 @@ class Config:
     INSTAGRAM: str = "https://instagram.com/imidzh_rf"
     
     # ID менеджера для уведомлений
-    MANAGER_TELEGRAM_ID: int = int(os.getenv("MANAGER_TELEGRAM_ID", 0))
+    MANAGER_TELEGRAM_ID: str = os.getenv("MANAGER_TELEGRAM_ID", "0")
+
+    def get_manager_id(self) -> int:
+        """Безопасное получение ID менеджера"""
+        try:
+            return int(self.MANAGER_TELEGRAM_ID)
+        except (ValueError, TypeError):
+            return 0
 
 config = Config()
