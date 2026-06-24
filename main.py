@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -9,7 +8,10 @@ from aiohttp import web
 
 from config import config
 from database.sheets import db
-from handlers import start_router, giveaway_router, contact_router, consultation_router
+from handlers.start import router as start_router
+from handlers.giveaway import router as giveaway_router
+from handlers.contact import router as contact_router
+from handlers.consultation import router as consultation_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -39,10 +41,7 @@ async def health_check(request):
 # Настройка приложения
 async def on_startup(bot: Bot):
     try:
-        # Инициализация Google Sheets
         await db.initialize()
-        
-        # Установка вебхука
         await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
         logger.info(f"✅ Бот запущен. Webhook: {WEBHOOK_URL}")
     except Exception as e:
@@ -60,23 +59,15 @@ async def on_shutdown(bot: Bot):
 def main():
     app = web.Application()
     
-    # Health check
     app.router.add_get("/", health_check)
     
-    # Настройка вебхуков
-    webhook_handler = SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot,
-    )
-    
+    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_handler.register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
     
-    # Регистрируем startup/shutdown
     app.on_startup.append(lambda app: on_startup(bot))
     app.on_shutdown.append(lambda app: on_shutdown(bot))
     
-    # Запуск сервера
     port = int(os.getenv("PORT", 10000))
     web.run_app(app, host='0.0.0.0', port=port)
 
