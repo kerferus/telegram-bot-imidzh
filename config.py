@@ -7,10 +7,10 @@ load_dotenv()
 @dataclass
 class Config:
     BOT_TOKEN: str = os.getenv("BOT_TOKEN")
-    RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL")
+    RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL", "")
     
     # Google Sheets
-    GOOGLE_SHEETS_CREDENTIALS: str = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "credentials.json")
+    GOOGLE_SHEETS_CREDENTIALS: str = "credentials.json"  # Файл с ключом
     SPREADSHEET_ID: str = os.getenv("SPREADSHEET_ID", "")
     
     # Контакты
