@@ -11,7 +11,7 @@ from database.sheets import db
 router = Router()
 
 # ID канала (если не работает, узнай числовой ID через @userinfobot)
-CHANNEL_ID = "@IMIDZH_RF"
+CHANNEL_ID = "-1003844279780"
 CHANNEL_URL = "https://t.me/IMIDZH_RF"
 
 async def check_subscription(bot, user_id: int) -> bool:
