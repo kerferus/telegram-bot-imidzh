@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from states.user_states import ConsultationStates
@@ -7,6 +7,7 @@ from keyboards.inline import get_consultation_apply_keyboard, get_phone_keyboard
 from keyboards.main_menu import get_back_button, get_main_menu
 from database.sheets import db
 from config import config
+from handlers.start import check_subscription, get_channel_keyboard
 
 import logging
 
@@ -16,6 +17,16 @@ router = Router()
 @router.message(F.text == "💼 Бесплатная консультация")
 async def start_consultation(message: Message):
     """Начало ветки консультации"""
+    # Проверка подписки
+    is_subscribed = await check_subscription(message.bot, message.from_user.id)
+    if not is_subscribed:
+        await message.answer(
+            "⚠️ Для использования бота необходимо подписаться на наш канал!\n\n"
+            "Подпишитесь и нажмите кнопку проверки 👇",
+            reply_markup=get_channel_keyboard()
+        )
+        return
+    
     consultation_text = (
         "💼 <b>БЕСПЛАТНАЯ КОНСУЛЬТАЦИЯ</b>\n\n"
         "Помогаем бизнесу уже 1 год выстроить продвижение:\n"
@@ -68,8 +79,6 @@ async def process_name(message: Message, state: FSMContext):
 @router.callback_query(F.data == "share_phone")
 async def request_phone_contact_consultation(callback: CallbackQuery):
     """Запрос контакта для консультации"""
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-    
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📱 Поделиться номером", request_contact=True)],
@@ -141,19 +150,17 @@ async def process_description(message: Message, state: FSMContext):
         await message.answer("Главное меню:", reply_markup=get_main_menu())
         return
     
-    # Получаем все данные
     data = await state.get_data()
     data['request_description'] = message.text
     data['telegram_id'] = message.from_user.id
     data['username'] = message.from_user.username
     data['source'] = 'consultation'
     
-    # Сохраняем в Google Sheets
     success = await db.save_consultation_request(data)
     
     if success:
-        # Уведомление менеджеру
-        if config.MANAGER_TELEGRAM_ID:
+        manager_id = config.get_manager_id()
+        if manager_id:
             try:
                 from main import bot
                 manager_text = (
@@ -161,14 +168,9 @@ async def process_description(message: Message, state: FSMContext):
                     f"👤 {data['name']}\n"
                     f"📱 {data['phone']}\n"
                     f"🏢 {data['company']}\n"
-                    f"💬 {data['request_description']}\n"
-                    f"📅 {data.get('created_at', 'только что')}"
+                    f"💬 {data['request_description']}"
                 )
-                await bot.send_message(
-                    config.MANAGER_TELEGRAM_ID,
-                    manager_text,
-                    parse_mode="HTML"
-                )
+                await bot.send_message(manager_id, manager_text, parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления: {e}")
         
