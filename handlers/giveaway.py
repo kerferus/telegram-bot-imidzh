@@ -1,13 +1,14 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import StateFilter
 
 from states.user_states import GiveawayStates
 from keyboards.inline import get_consent_keyboard, get_phone_keyboard
-from keyboards.main_menu import get_back_button
+from keyboards.main_menu import get_back_button, get_main_menu
 from database.sheets import db
 from config import config
+from handlers.start import check_subscription, get_channel_keyboard
 
 import logging
 
@@ -17,6 +18,16 @@ router = Router()
 @router.message(F.text == "🎁 Участие в розыгрыше")
 async def start_giveaway(message: Message, state: FSMContext):
     """Начало ветки розыгрыша"""
+    # Проверка подписки
+    is_subscribed = await check_subscription(message.bot, message.from_user.id)
+    if not is_subscribed:
+        await message.answer(
+            "⚠️ Для использования бота необходимо подписаться на наш канал!\n\n"
+            "Подпишитесь и нажмите кнопку проверки 👇",
+            reply_markup=get_channel_keyboard()
+        )
+        return
+    
     giveaway_text = (
         "🎁 <b>РОЗЫГРЫШ БЕСПЛАТНОЙ ФОТОСЪЁМКИ</b>\n\n"
         "Добро пожаловать!\n\n"
@@ -59,7 +70,6 @@ async def process_last_name(message: Message, state: FSMContext):
     """Обработка фамилии"""
     if message.text == "🔙 Назад в меню":
         await state.clear()
-        from keyboards.main_menu import get_main_menu
         await message.answer("Главное меню:", reply_markup=get_main_menu())
         return
     
@@ -77,7 +87,6 @@ async def process_first_name(message: Message, state: FSMContext):
     """Обработка имени"""
     if message.text == "🔙 Назад в меню":
         await state.clear()
-        from keyboards.main_menu import get_main_menu
         await message.answer("Главное меню:", reply_markup=get_main_menu())
         return
     
@@ -95,7 +104,6 @@ async def process_middle_name(message: Message, state: FSMContext):
     """Обработка отчества"""
     if message.text == "🔙 Назад в меню":
         await state.clear()
-        from keyboards.main_menu import get_main_menu
         await message.answer("Главное меню:", reply_markup=get_main_menu())
         return
     
@@ -113,8 +121,6 @@ async def process_middle_name(message: Message, state: FSMContext):
 @router.callback_query(F.data == "share_phone")
 async def request_phone_contact(callback: CallbackQuery):
     """Запрос контакта через Telegram"""
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-    
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📱 Поделиться номером", request_contact=True)],
@@ -135,7 +141,6 @@ async def process_phone_contact(message: Message, state: FSMContext):
     """Обработка контакта телефона"""
     phone = message.contact.phone_number
     
-    # Проверяем на дубликат
     if await db.check_phone_exists(phone):
         await message.answer(
             "❌ Данный номер телефона уже зарегистрирован в системе.\n"
@@ -158,13 +163,11 @@ async def process_phone_text(message: Message, state: FSMContext):
     """Обработка телефона текстом"""
     if message.text == "🔙 Назад в меню":
         await state.clear()
-        from keyboards.main_menu import get_main_menu
         await message.answer("Главное меню:", reply_markup=get_main_menu())
         return
     
     phone = message.text.strip()
     
-    # Простая валидация телефона
     if len(phone) < 10:
         await message.answer(
             "❌ Пожалуйста, введите корректный номер телефона (минимум 10 цифр):",
@@ -172,7 +175,6 @@ async def process_phone_text(message: Message, state: FSMContext):
         )
         return
     
-    # Проверяем на дубликат
     if await db.check_phone_exists(phone):
         await message.answer(
             "❌ Данный номер телефона уже зарегистрирован в системе.\n"
@@ -195,7 +197,6 @@ async def process_organization(message: Message, state: FSMContext):
     """Обработка названия организации"""
     if message.text == "🔙 Назад в меню":
         await state.clear()
-        from keyboards.main_menu import get_main_menu
         await message.answer("Главное меню:", reply_markup=get_main_menu())
         return
     
@@ -214,11 +215,9 @@ async def process_activity(message: Message, state: FSMContext):
     """Завершение анкеты розыгрыша"""
     if message.text == "🔙 Назад в меню":
         await state.clear()
-        from keyboards.main_menu import get_main_menu
         await message.answer("Главное меню:", reply_markup=get_main_menu())
         return
     
-    # Получаем все данные
     data = await state.get_data()
     data['activity_type'] = message.text
     data['telegram_id'] = message.from_user.id
@@ -226,12 +225,11 @@ async def process_activity(message: Message, state: FSMContext):
     data['consent_to_data_processing'] = True
     data['source'] = 'giveaway'
     
-    # Сохраняем в Google Sheets
     success = await db.save_giveaway_participant(data)
     
     if success:
-        # Отправляем уведомление менеджеру
-        if config.MANAGER_TELEGRAM_ID:
+        manager_id = config.get_manager_id()
+        if manager_id:
             try:
                 from main import bot
                 manager_text = (
@@ -239,18 +237,12 @@ async def process_activity(message: Message, state: FSMContext):
                     f"👤 {data['last_name']} {data['first_name']} {data.get('middle_name', '')}\n"
                     f"📱 {data['phone']}\n"
                     f"🏢 {data['organization']}\n"
-                    f"📋 {data['activity_type']}\n"
-                    f"📅 {data.get('registered_at', 'только что')}"
+                    f"📋 {data['activity_type']}"
                 )
-                await bot.send_message(
-                    config.MANAGER_TELEGRAM_ID,
-                    manager_text,
-                    parse_mode="HTML"
-                )
+                await bot.send_message(manager_id, manager_text, parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления менеджеру: {e}")
         
-        # Успешное завершение
         await message.answer(
             "✅ <b>Вы успешно зарегистрированы в розыгрыше!</b>\n\n"
             "Результаты будут объявлены после 5 июля.\n"
